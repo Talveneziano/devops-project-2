@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    environment {
+        IMAGE_NAME = "talveneziano/devops-project-2"
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -8,24 +12,37 @@ pipeline {
             }
         }
 
-        stage('Stop Old Containers') {
+        stage('Build Image') {
             steps {
-                sh 'docker compose down || true'
+                sh """
+                docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} ./app
+                docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest
+                """
             }
         }
 
-        stage('Build and Start Containers') {
+        stage('Docker Login') {
             steps {
-                sh 'docker compose up --build -d'
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh '''
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    '''
+                }
             }
         }
 
-        stage('Test API Health') {
+        stage('Push Image') {
             steps {
-                sh '''
-                sleep 10
-                curl -f http://localhost:5000/health
-                '''
+                sh """
+                docker push ${IMAGE_NAME}:${BUILD_NUMBER}
+                docker push ${IMAGE_NAME}:latest
+                """
             }
         }
     }
